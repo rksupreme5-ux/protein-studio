@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Protein Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.0.4/3Dmol-min.js"></script>
+<style>
+:root{--bench:#dde5e9;--panel:#f4f7f8;--ink:#12212b;--mute:#5f7380;--line:#cdd8de;--teal:#13a898;--coral:#ff5a6e;--deep:#0b1620}
+*{box-sizing:border-box;margin:0}
+body{font:14px 'Bricolage Grotesque',system-ui,sans-serif;background:var(--bench);color:var(--ink);height:100vh;display:grid;grid-template-columns:310px 1fr 320px;gap:14px;padding:14px;overflow:hidden}
+aside{display:flex;flex-direction:column;gap:12px;overflow:auto;min-height:0}
+.card{background:var(--panel);border-radius:18px;padding:16px;box-shadow:0 1px 0 #fff inset,0 8px 24px -14px #12212b55}
+h1{font-size:26px;font-weight:800;letter-spacing:-.03em}
+h1 i{font-style:normal;color:var(--teal)}
+p.sub{color:var(--mute);margin-top:2px}
+h3{font-size:15px;font-weight:800;margin-bottom:10px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{font:600 13px inherit;font-family:inherit;border:0;border-radius:999px;padding:10px 14px;cursor:pointer;color:var(--ink);background:#fff;box-shadow:0 0 0 1px var(--line),0 3px 0 var(--line);transition:transform .12s,box-shadow .12s,background .12s;display:flex;align-items:center;justify-content:center;gap:7px}
+.btn:hover{transform:translateY(-2px);box-shadow:0 0 0 1px var(--teal),0 5px 0 var(--teal)}
+.btn:active{transform:translateY(2px);box-shadow:0 0 0 1px var(--line),0 1px 0 var(--line)}
+.btn.on{background:var(--teal);color:#fff;box-shadow:0 0 0 1px #0d8a7d,0 3px 0 #0d8a7d}
+.btn.go{background:var(--coral);color:#fff;box-shadow:0 0 0 1px #d93f53,0 3px 0 #d93f53}
+.btn.go:hover{box-shadow:0 0 0 1px #d93f53,0 5px 0 #d93f53}
+.btn.ghost:hover{box-shadow:0 0 0 1px var(--coral),0 5px 0 var(--coral)}
+.btn:disabled{opacity:.4;pointer-events:none}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #13a89877;outline-offset:2px}
+input[type=text],select{width:100%;font:inherit;padding:10px 14px;border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+.line{display:flex;gap:8px;margin-bottom:8px}
+.gap{margin-top:8px}
+label.sl{display:flex;justify-content:space-between;font-weight:600;margin:12px 0 4px}
+label.sl b{color:var(--teal);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--coral);height:22px}
+#view{position:relative;border-radius:24px;overflow:hidden;background:var(--deep);box-shadow:0 20px 50px -24px #0b1620}
+#v{width:100%;height:100%;position:relative}
+#hud{position:absolute;left:18px;top:16px;color:#e6f2f5;pointer-events:none}
+#hud b{font-size:20px;letter-spacing:-.02em}
+#hud span{display:block;color:#8fb0bb;margin-top:2px}
+#live{position:absolute;right:18px;top:18px;color:#8fe3d8;font-weight:600;display:flex;align-items:center;gap:7px;pointer-events:none}
+#live:before{content:"";width:9px;height:9px;border-radius:50%;background:var(--teal);animation:pulse 1.8s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 7px #13a89822}}
+#dock{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:8px;padding:8px;border-radius:999px;background:#0b1620cc;backdrop-filter:blur(10px);border:1px solid #ffffff1f}
+#dock .btn{background:#ffffff12;color:#e6f2f5;box-shadow:none;padding:9px 16px}
+#dock .btn:hover{background:#ffffff26;transform:translateY(-2px)}
+#dock .btn.on{background:var(--teal)}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tile{background:#fff;border-radius:14px;padding:10px 12px;box-shadow:0 0 0 1px var(--line)}
+.tile b{display:block;font-size:22px;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.tile span{color:var(--mute);font-size:12.5px}
+.tile.bad b{color:var(--coral)}.tile.ok b{color:var(--teal)}
+#rama{width:100%;height:290px;border-radius:14px;background:#fff;box-shadow:0 0 0 1px var(--line);touch-action:none;cursor:crosshair}
+small{color:var(--mute);display:block;margin-top:8px;line-height:1.4}
+#toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,40px);opacity:0;background:var(--ink);color:#fff;padding:12px 20px;border-radius:999px;transition:.25s;max-width:80vw;z-index:9}
+#toast.show{transform:translate(-50%,0);opacity:1}#toast.err{background:var(--coral)}
+@media(max-width:1100px){body{grid-template-columns:1fr;overflow:auto;height:auto}#view{height:70vh}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head>
+<body>
+<aside>
+  <div class="card"><h1>Protein <i>Studio</i></h1><p class="sub">Edit a protein and watch it move.</p></div>
+  <div class="card"><h3>Open a structure</h3>
+    <div class="line"><input id="pid" type="text" value="1CRN" placeholder="PDB ID, e.g. 1UBQ" aria-label="PDB ID"><button class="btn on" id="fetch">Fetch</button></div>
+    <button class="btn" id="up" style="width:100%">Upload a .pdb file</button><input id="file" type="file" accept=".pdb,.ent" hidden>
+  </div>
+  <div class="card"><h3>Look</h3>
+    <div class="row" id="styles"><button class="btn on" data-s="cartoon">Cartoon</button><button class="btn" data-s="stick">Sticks</button><button class="btn" data-s="sphere">Spheres</button><button class="btn" data-s="surface">Surface</button></div>
+    <div class="row gap" id="colors"><button class="btn on" data-c="spectrum">Rainbow</button><button class="btn" data-c="ss">Fold type</button><button class="btn" data-c="chain">Chain</button><button class="btn" data-c="hyd">Water-loving</button></div>
+  </div>
+  <div class="card"><h3>Edit residue</h3>
+    <p id="selinfo" class="sub">Click an atom in the 3D view to pick a residue.</p>
+    <label class="sl">Phi (φ) <b id="phiv">-</b></label><input type="range" id="phi" min="-180" max="180" step="1" disabled>
+    <label class="sl">Psi (ψ) <b id="psiv">-</b></label><input type="range" id="psi" min="-180" max="180" step="1" disabled>
+    <div class="line gap"><select id="aa" aria-label="New amino acid"></select><button class="btn go" id="mut" disabled>Mutate</button></div>
+    <button class="btn ghost" id="del" style="width:100%" disabled>Delete residue</button>
+    <div class="row gap"><button class="btn" id="undo">Undo</button><button class="btn" id="redo">Redo</button></div>
+    <button class="btn on gap" id="exp" style="width:100%">Export PDB</button>
+  </div>
+</aside>
+
+<main id="view"><div id="v"></div>
+  <div id="hud"><b id="title">No structure</b><span id="sub">Loading…</span></div><div id="live">Live</div>
+  <div id="dock"><button class="btn" id="spin">Spin</button><button class="btn" id="reset">Reset view</button><button class="btn" id="shot">Save image</button></div>
+</main>
+
+<aside>
+  <div class="card"><h3>Structure health</h3>
+    <div class="tiles"><div class="tile"><b id="n_res">-</b><span>Residues</span></div><div class="tile"><b id="n_atoms">-</b><span>Atoms</span></div>
+    <div class="tile"><b id="n_mass">-</b><span>Mass (kDa)</span></div><div class="tile"><b id="n_rg">-</b><span>Radius of gyration (Å)</span></div></div>
+    <div class="tile gap" id="clashTile"><b id="n_clash">-</b><span>Steric clashes (shown red in 3D)</span></div>
+  </div>
+  <div class="card"><h3>Ramachandran map</h3><canvas id="rama"></canvas>
+    <small>Drag any dot to bend the backbone live. Shaded zones are approximate favoured regions (helix, sheet, left-handed helix).</small></div>
+</aside>
+<div id="toast"></div>
+
+<script>
+const q=s=>document.querySelector(s);
+const V=$3Dmol.createViewer("v",{backgroundColor:"#0b1620",antialias:true});
+const st={style:"cartoon",color:"spectrum",sel:null,stats:null,spin:false,drag:false};
+const AAS="ALA ARG ASN ASP CYS GLN GLU GLY HIS ILE LEU LYS MET PHE PRO SER THR TRP TYR VAL".split(" ");
+q("#aa").innerHTML=AAS.map(a=>`<option>${a}</option>`).join("");
+const HYD={ALA:1,VAL:1,LEU:1,ILE:1,MET:1,PHE:1,TRP:1,PRO:1,CYS:1,GLY:2,SER:3,THR:3,ASN:3,GLN:3,TYR:3,HIS:3,ASP:4,GLU:4,LYS:5,ARG:5};
+const HCOL={1:"#f2a93b",2:"#9fb3bd",3:"#3fc1d6",4:"#ff6b7d",5:"#7a8cff"};
+
+function toast(m,err){const t=q("#toast");t.textContent=m;t.className="show"+(err?" err":"");clearTimeout(toast.h);toast.h=setTimeout(()=>t.className="",2600)}
+async function api(p,b){const r=await fetch(p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});const j=await r.json();if(!r.ok)throw new Error(j.error);return j}
+
+function colorSpec(){
+  if(st.color==="ss")return{colorscheme:"ssPyMOL"};
+  if(st.color==="chain")return{colorscheme:"chain"};
+  if(st.color==="hyd")return{colorfunc:a=>HCOL[HYD[a.resn]||2]};
+  return{color:"spectrum"};
+}
+function paint(){
+  const c=colorSpec();
+  V.removeAllSurfaces();
+  const sty={cartoon:{cartoon:{...c,thickness:.45}},stick:{stick:{...c,radius:.2}},sphere:{sphere:{...c,scale:.38}},surface:{cartoon:{...c,opacity:.5}}}[st.style];
+  V.setStyle({},sty);
+  V.setStyle({hetflag:true},{stick:{radius:.16,colorscheme:"greenCarbon"}});
+  V.setStyle({resn:"HOH"},{});
+  if(st.style==="surface")V.addSurface($3Dmol.SurfaceType.VDW,{opacity:.78,...c},{hetflag:false});
+  for(const [ch,rn] of (st.stats?.clash_res||[]))V.addStyle({chain:ch,resi:rn},{stick:{color:"#ff5a6e",radius:.24}});
+  if(st.sel)V.addStyle({chain:st.sel.ch,resi:st.sel.rn},{stick:{color:"#5ff0dc",radius:.3},sphere:{color:"#5ff0dc",scale:.3}});
+  V.render();
+}
+function render(pdb,keep){
+  const v=keep?V.getView():null;
+  V.removeAllModels();V.addModel(pdb,"pdb");
+  V.setClickable({},true,a=>select(a.chain,a.resi,a.resn));
+  V.setHoverable({},true,(a,vw)=>{if(!a.label)a.label=vw.addLabel(`${a.resn} ${a.resi} · ${a.atom}`,{position:a,backgroundColor:"#12212b",fontColor:"#fff",fontSize:12,backgroundOpacity:.9})},(a,vw)=>{if(a.label){vw.removeLabel(a.label);delete a.label}});
+  paint();
+  keep?V.setView(v):V.zoomTo();
+  V.render();
+}
+
+function select(ch,rn,name){
+  st.sel={ch,rn,name};
+  const e=(st.stats?.rama||[]).find(r=>r[0]===ch&&r[1]===rn);
+  q("#selinfo").innerHTML=`<b>${name} ${rn}</b>, chain ${ch}`;
+  q("#sub").textContent=`Selected ${name} ${rn} (chain ${ch})`;
+  for(const [id,i] of [["phi",3],["psi",4]]){const s=q("#"+id);s.disabled=!e;if(e){s.value=e[i];q("#"+id+"v").textContent=Math.round(e[i])+"°"}else q("#"+id+"v").textContent="n/a"}
+  q("#mut").disabled=q("#del").disabled=false;
+  q("#aa").value=AAS.includes(name)?name:"ALA";
+  paint();drawRama();
+}
+
+function updateUI(j){
+  const s=st.stats=j.stats;
+  q("#title").textContent=j.name;q("#sub").textContent=st.sel?q("#sub").textContent:"Click any atom to start editing";
+  q("#n_res").textContent=s.residues;q("#n_atoms").textContent=s.atoms;q("#n_mass").textContent=s.mass;q("#n_rg").textContent=s.rg;
+  q("#n_clash").textContent=s.clashes;q("#clashTile").className="tile gap "+(s.clashes?"bad":"ok");
+  q("#undo").disabled=!j.undo;q("#redo").disabled=!j.redo;
+  if(st.sel&&!st.drag){const e=s.rama.find(r=>r[0]===st.sel.ch&&r[1]===st.sel.rn);
+    if(e){q("#phi").value=e[3];q("#psi").value=e[4];q("#phiv").textContent=Math.round(e[3])+"°";q("#psiv").textContent=Math.round(e[4])+"°"}}
+  drawRama();
+}
+function apply(j,keep){render(j.pdb,keep);updateUI(j);paint()}
+
+let busy=false,pend=null,fresh=true;
+async function edit(b){
+  if(busy){if(pend&&pend.snap)b.snap=true;pend=b;return}
+  busy=true;
+  try{apply(await api("/api/edit",b),true)}catch(e){toast(e.message,1)}
+  busy=false;if(pend){const p=pend;pend=null;edit(p)}
+}
+async function load(body){
+  try{st.sel=null;apply(await api("/api/load",body),false);q("#selinfo").textContent="Click an atom in the 3D view to pick a residue.";["phi","psi","mut","del"].forEach(i=>q("#"+i).disabled=true);toast("Structure ready")}
+  catch(e){toast(e.message,1)}
+}
+
+/* Ramachandran map: draw + drag-to-edit */
+const rc=q("#rama");
+function drawRama(){
+  const d=devicePixelRatio||1,W=rc.width=rc.clientWidth*d,H=rc.height=rc.clientHeight*d,x=rc.getContext("2d");
+  x.fillStyle="#fff";x.fillRect(0,0,W,H);
+  const X=p=>(p+180)/360*W,Y=p=>(180-p)/360*H;
+  for(const [cx,cy,rx,ry,col] of [[-63,-43,42,30,"#13a898"],[-120,130,48,40,"#7a8cff"],[60,45,28,28,"#f2a93b"]]){
+    x.beginPath();x.ellipse(X(cx),Y(cy),rx/360*W,ry/360*H,0,0,7);x.fillStyle=col+"2e";x.fill()}
+  x.strokeStyle="#cdd8de";x.lineWidth=1;x.beginPath();x.moveTo(W/2,0);x.lineTo(W/2,H);x.moveTo(0,H/2);x.lineTo(W,H/2);x.stroke();
+  x.fillStyle="#5f7380";x.font=`${11*d}px 'Bricolage Grotesque'`;x.fillText("φ →",W-34*d,H/2-6*d);x.fillText("ψ ↑",W/2+6*d,14*d);
+  const bad=new Set((st.stats?.clash_res||[]).map(r=>r[0]+r[1]));
+  for(const r of st.stats?.rama||[]){
+    const on=st.sel&&st.sel.ch===r[0]&&st.sel.rn===r[1];
+    x.beginPath();x.arc(X(r[3]),Y(r[4]),(on?7:3.2)*d,0,7);
+    x.fillStyle=on?"#ff5a6e":bad.has(r[0]+r[1])?"#d93f53":"#12212b";x.globalAlpha=on?1:.7;x.fill();x.globalAlpha=1;
+    if(on){x.lineWidth=2*d;x.strokeStyle="#fff";x.stroke()}
+  }
+}
+const pos=e=>{const b=rc.getBoundingClientRect();return[Math.max(-180,Math.min(180,(e.clientX-b.left)/b.width*360-180)),Math.max(-180,Math.min(180,180-(e.clientY-b.top)/b.height*360))]};
+rc.onpointerdown=e=>{
+  const p=pos(e);let best=null,bd=1e9;
+  for(const r of st.stats?.rama||[]){const d=(r[3]-p[0])**2+(r[4]-p[1])**2;if(d<bd){bd=d;best=r}}
+  if(best&&bd<500){if(!st.sel||st.sel.ch!==best[0]||st.sel.rn!==best[1])select(best[0],best[1],best[2]);st.drag=true;fresh=true;rc.setPointerCapture(e.pointerId)}
+};
+rc.onpointermove=e=>{if(!st.drag||!st.sel)return;const p=pos(e);edit({op:"angle",chain:st.sel.ch,rn:st.sel.rn,phi:p[0],psi:p[1],snap:fresh});fresh=false};
+window.addEventListener("pointerup",()=>st.drag=false);
+
+/* sliders */
+for(const w of ["phi","psi"]){const s=q("#"+w);
+  s.onpointerdown=()=>{fresh=true;st.drag=true};
+  s.oninput=()=>{q("#"+w+"v").textContent=s.value+"°";edit({op:"angle",chain:st.sel.ch,rn:st.sel.rn,[w]:+s.value,snap:fresh});fresh=false}}
+
+/* buttons */
+function group(sel,key){q(sel).onclick=e=>{const b=e.target.closest("button");if(!b)return;st[key]=b.dataset.s||b.dataset.c;q(sel).querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));paint()}}
+group("#styles","style");group("#colors","color");
+q("#fetch").onclick=()=>load({pdb_id:q("#pid").value});
+q("#pid").onkeydown=e=>e.key==="Enter"&&q("#fetch").click();
+q("#up").onclick=()=>q("#file").click();
+q("#file").onchange=async e=>{const f=e.target.files[0];if(f)load({text:await f.text(),name:f.name.replace(/\.\w+$/,"")})};
+q("#mut").onclick=()=>{const to=q("#aa").value;st.sel.name=to;edit({op:"mutate",chain:st.sel.ch,rn:st.sel.rn,to});toast(`Mutated to ${to}: backbone and Cβ kept, side chain not rebuilt`)};
+q("#del").onclick=()=>{edit({op:"delete",chain:st.sel.ch,rn:st.sel.rn});st.sel=null;q("#selinfo").textContent="Residue deleted. Pick another.";["phi","psi","mut","del"].forEach(i=>q("#"+i).disabled=true)};
+q("#undo").onclick=()=>edit({op:"undo"});q("#redo").onclick=()=>edit({op:"redo"});
+q("#exp").onclick=()=>location.href="/api/export";
+q("#spin").onclick=e=>{st.spin=!st.spin;V.spin(st.spin);e.currentTarget.classList.toggle("on",st.spin)};
+q("#reset").onclick=()=>{V.zoomTo();V.render()};
+q("#shot").onclick=()=>{const a=document.createElement("a");a.href=V.pngURI();a.download="protein.png";a.click()};
+addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key==="z"){e.preventDefault();edit({op:"undo"})}if((e.ctrlKey||e.metaKey)&&e.key==="y"){e.preventDefault();edit({op:"redo"})}});
+addEventListener("resize",()=>{V.resize();drawRama()});
+q("#undo").disabled=q("#redo").disabled=true;
+load({pdb_id:"1CRN"});
+</script></body></html>
