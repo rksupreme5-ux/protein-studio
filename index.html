@@ -56,7 +56,7 @@ small{color:var(--mute);display:block;margin-top:8px;line-height:1.4}
 </style></head>
 <body>
 <aside>
-  <div class="card"><h1>Protein <i>Studio</i></h1><p class="sub">Edit a protein and watch it move.</p></div>
+  <div class="card"><h1>Protein <i>Studio</i></h1><p class="sub">View and analyze protein structures.</p></div>
   <div class="card"><h3>Open a structure</h3>
     <div class="line"><input id="pid" type="text" value="1CRN" placeholder="PDB ID, e.g. 1UBQ" aria-label="PDB ID"><button class="btn on" id="fetch">Fetch</button></div>
     <button class="btn" id="up" style="width:100%">Upload a .pdb file</button><input id="file" type="file" accept=".pdb,.ent" hidden>
@@ -71,7 +71,7 @@ small{color:var(--mute);display:block;margin-top:8px;line-height:1.4}
     <label class="sl">Psi (ψ) <b id="psiv">-</b></label><input type="range" id="psi" min="-180" max="180" step="1" disabled>
     <div class="line gap"><select id="aa" aria-label="New amino acid"></select><button class="btn go" id="mut" disabled>Mutate</button></div>
     <button class="btn ghost" id="del" style="width:100%" disabled>Delete residue</button>
-    <div class="row gap"><button class="btn" id="undo">Undo</button><button class="btn" id="redo">Redo</button></div>
+    <div class="row gap"><button class="btn" id="undo" disabled>Undo</button><button class="btn" id="redo" disabled>Redo</button></div>
     <button class="btn on gap" id="exp" style="width:100%">Export PDB</button>
   </div>
 </aside>
@@ -88,7 +88,7 @@ small{color:var(--mute);display:block;margin-top:8px;line-height:1.4}
     <div class="tile gap" id="clashTile"><b id="n_clash">-</b><span>Steric clashes (shown red in 3D)</span></div>
   </div>
   <div class="card"><h3>Ramachandran map</h3><canvas id="rama"></canvas>
-    <small>Drag any dot to bend the backbone live. Shaded zones are approximate favoured regions (helix, sheet, left-handed helix).</small></div>
+    <small>Serverless Mode: Structural editing, live clashes, and Ramachandran calculations require the local Python backend.</small></div>
 </aside>
 <div id="toast"></div>
 
@@ -102,7 +102,6 @@ const HYD={ALA:1,VAL:1,LEU:1,ILE:1,MET:1,PHE:1,TRP:1,PRO:1,CYS:1,GLY:2,SER:3,THR
 const HCOL={1:"#f2a93b",2:"#9fb3bd",3:"#3fc1d6",4:"#ff6b7d",5:"#7a8cff"};
 
 function toast(m,err){const t=q("#toast");t.textContent=m;t.className="show"+(err?" err":"");clearTimeout(toast.h);toast.h=setTimeout(()=>t.className="",2600)}
-async function api(p,b){const r=await fetch(p,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});const j=await r.json();if(!r.ok)throw new Error(j.error);return j}
 
 function colorSpec(){
   if(st.color==="ss")return{colorscheme:"ssPyMOL"};
@@ -118,7 +117,6 @@ function paint(){
   V.setStyle({hetflag:true},{stick:{radius:.16,colorscheme:"greenCarbon"}});
   V.setStyle({resn:"HOH"},{});
   if(st.style==="surface")V.addSurface($3Dmol.SurfaceType.VDW,{opacity:.78,...c},{hetflag:false});
-  for(const [ch,rn] of (st.stats?.clash_res||[]))V.addStyle({chain:ch,resi:rn},{stick:{color:"#ff5a6e",radius:.24}});
   if(st.sel)V.addStyle({chain:st.sel.ch,resi:st.sel.rn},{stick:{color:"#5ff0dc",radius:.3},sphere:{color:"#5ff0dc",scale:.3}});
   V.render();
 }
@@ -134,40 +132,62 @@ function render(pdb,keep){
 
 function select(ch,rn,name){
   st.sel={ch,rn,name};
-  const e=(st.stats?.rama||[]).find(r=>r[0]===ch&&r[1]===rn);
   q("#selinfo").innerHTML=`<b>${name} ${rn}</b>, chain ${ch}`;
-  q("#sub").textContent=`Selected ${name} ${rn} (chain ${ch})`;
-  for(const [id,i] of [["phi",3],["psi",4]]){const s=q("#"+id);s.disabled=!e;if(e){s.value=e[i];q("#"+id+"v").textContent=Math.round(e[i])+"°"}else q("#"+id+"v").textContent="n/a"}
-  q("#mut").disabled=q("#del").disabled=false;
+  q("#sub").textContent=`Selected ${name} ${rn} (chain ${ch}) - View Only`;
+  ["phi","psi","mut","del"].forEach(i=>q("#"+i).disabled=true);
+  q("#phiv").textContent="n/a";
+  q("#psiv").textContent="n/a";
   q("#aa").value=AAS.includes(name)?name:"ALA";
   paint();drawRama();
 }
 
 function updateUI(j){
   const s=st.stats=j.stats;
-  q("#title").textContent=j.name;q("#sub").textContent=st.sel?q("#sub").textContent:"Click any atom to start editing";
-  q("#n_res").textContent=s.residues;q("#n_atoms").textContent=s.atoms;q("#n_mass").textContent=s.mass;q("#n_rg").textContent=s.rg;
-  q("#n_clash").textContent=s.clashes;q("#clashTile").className="tile gap "+(s.clashes?"bad":"ok");
-  q("#undo").disabled=!j.undo;q("#redo").disabled=!j.redo;
-  if(st.sel&&!st.drag){const e=s.rama.find(r=>r[0]===st.sel.ch&&r[1]===st.sel.rn);
-    if(e){q("#phi").value=e[3];q("#psi").value=e[4];q("#phiv").textContent=Math.round(e[3])+"°";q("#psiv").textContent=Math.round(e[4])+"°"}}
+  q("#title").textContent=j.name;
+  q("#sub").textContent=st.sel?q("#sub").textContent:"Click any atom to start";
+  q("#n_res").textContent=s.residues;q("#n_atoms").textContent=s.atoms;
+  q("#n_mass").textContent=s.mass;q("#n_rg").textContent=s.rg;
+  q("#n_clash").textContent=s.clashes;q("#clashTile").className="tile gap ok";
   drawRama();
 }
-function apply(j,keep){render(j.pdb,keep);updateUI(j);paint()}
 
-let busy=false,pend=null,fresh=true;
-async function edit(b){
-  if(busy){if(pend&&pend.snap)b.snap=true;pend=b;return}
-  busy=true;
-  try{apply(await api("/api/edit",b),true)}catch(e){toast(e.message,1)}
-  busy=false;if(pend){const p=pend;pend=null;edit(p)}
-}
+/* SERVERLESS DATA FETCHING */
 async function load(body){
-  try{st.sel=null;apply(await api("/api/load",body),false);q("#selinfo").textContent="Click an atom in the 3D view to pick a residue.";["phi","psi","mut","del"].forEach(i=>q("#"+i).disabled=true);toast("Structure ready")}
+  try {
+    st.sel=null;
+    let pdbText = "", name = "";
+    q("#sub").textContent = "Fetching structure data...";
+    
+    if (body.pdb_id) {
+      name = body.pdb_id.toUpperCase();
+      const res = await fetch(`https://files.rcsb.org/download/${name}.pdb`);
+      if (!res.ok) throw new Error("PDB not found on RCSB");
+      pdbText = await res.text();
+    } else if (body.text) {
+      name = body.name || "Uploaded File";
+      pdbText = body.text;
+    }
+
+    render(pdbText, false);
+    
+    // Calculate lightweight frontend stats
+    const atoms = V.getModel().selectedAtoms();
+    const residues = new Set(atoms.map(a => a.chain + String(a.resi))).size;
+    const mass = (atoms.length * 14 / 1000).toFixed(1);
+    
+    const mockStats = { residues: residues, atoms: atoms.length, mass: mass + " (est)", rg: "N/A", clashes: 0, clash_res: [], rama: [] };
+    updateUI({name: name, stats: mockStats});
+    
+    q("#selinfo").textContent="Click an atom in the 3D view to pick a residue.";
+    ["phi","psi","mut","del"].forEach(i=>q("#"+i).disabled=true);
+    toast("Structure ready (Serverless Mode)");
+  }
   catch(e){toast(e.message,1)}
 }
 
-/* Ramachandran map: draw + drag-to-edit */
+async function edit(b){ toast("Structural editing requires the local Python backend.", 1); }
+
+/* Ramachandran map (Static Background for Serverless) */
 const rc=q("#rama");
 function drawRama(){
   const d=devicePixelRatio||1,W=rc.width=rc.clientWidth*d,H=rc.height=rc.clientHeight*d,x=rc.getContext("2d");
@@ -177,27 +197,7 @@ function drawRama(){
     x.beginPath();x.ellipse(X(cx),Y(cy),rx/360*W,ry/360*H,0,0,7);x.fillStyle=col+"2e";x.fill()}
   x.strokeStyle="#cdd8de";x.lineWidth=1;x.beginPath();x.moveTo(W/2,0);x.lineTo(W/2,H);x.moveTo(0,H/2);x.lineTo(W,H/2);x.stroke();
   x.fillStyle="#5f7380";x.font=`${11*d}px 'Bricolage Grotesque'`;x.fillText("φ →",W-34*d,H/2-6*d);x.fillText("ψ ↑",W/2+6*d,14*d);
-  const bad=new Set((st.stats?.clash_res||[]).map(r=>r[0]+r[1]));
-  for(const r of st.stats?.rama||[]){
-    const on=st.sel&&st.sel.ch===r[0]&&st.sel.rn===r[1];
-    x.beginPath();x.arc(X(r[3]),Y(r[4]),(on?7:3.2)*d,0,7);
-    x.fillStyle=on?"#ff5a6e":bad.has(r[0]+r[1])?"#d93f53":"#12212b";x.globalAlpha=on?1:.7;x.fill();x.globalAlpha=1;
-    if(on){x.lineWidth=2*d;x.strokeStyle="#fff";x.stroke()}
-  }
 }
-const pos=e=>{const b=rc.getBoundingClientRect();return[Math.max(-180,Math.min(180,(e.clientX-b.left)/b.width*360-180)),Math.max(-180,Math.min(180,180-(e.clientY-b.top)/b.height*360))]};
-rc.onpointerdown=e=>{
-  const p=pos(e);let best=null,bd=1e9;
-  for(const r of st.stats?.rama||[]){const d=(r[3]-p[0])**2+(r[4]-p[1])**2;if(d<bd){bd=d;best=r}}
-  if(best&&bd<500){if(!st.sel||st.sel.ch!==best[0]||st.sel.rn!==best[1])select(best[0],best[1],best[2]);st.drag=true;fresh=true;rc.setPointerCapture(e.pointerId)}
-};
-rc.onpointermove=e=>{if(!st.drag||!st.sel)return;const p=pos(e);edit({op:"angle",chain:st.sel.ch,rn:st.sel.rn,phi:p[0],psi:p[1],snap:fresh});fresh=false};
-window.addEventListener("pointerup",()=>st.drag=false);
-
-/* sliders */
-for(const w of ["phi","psi"]){const s=q("#"+w);
-  s.onpointerdown=()=>{fresh=true;st.drag=true};
-  s.oninput=()=>{q("#"+w+"v").textContent=s.value+"°";edit({op:"angle",chain:st.sel.ch,rn:st.sel.rn,[w]:+s.value,snap:fresh});fresh=false}}
 
 /* buttons */
 function group(sel,key){q(sel).onclick=e=>{const b=e.target.closest("button");if(!b)return;st[key]=b.dataset.s||b.dataset.c;q(sel).querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));paint()}}
@@ -206,15 +206,23 @@ q("#fetch").onclick=()=>load({pdb_id:q("#pid").value});
 q("#pid").onkeydown=e=>e.key==="Enter"&&q("#fetch").click();
 q("#up").onclick=()=>q("#file").click();
 q("#file").onchange=async e=>{const f=e.target.files[0];if(f)load({text:await f.text(),name:f.name.replace(/\.\w+$/,"")})};
-q("#mut").onclick=()=>{const to=q("#aa").value;st.sel.name=to;edit({op:"mutate",chain:st.sel.ch,rn:st.sel.rn,to});toast(`Mutated to ${to}: backbone and Cβ kept, side chain not rebuilt`)};
-q("#del").onclick=()=>{edit({op:"delete",chain:st.sel.ch,rn:st.sel.rn});st.sel=null;q("#selinfo").textContent="Residue deleted. Pick another.";["phi","psi","mut","del"].forEach(i=>q("#"+i).disabled=true)};
+q("#mut").onclick=()=>{edit()};
+q("#del").onclick=()=>{edit()};
 q("#undo").onclick=()=>edit({op:"undo"});q("#redo").onclick=()=>edit({op:"redo"});
-q("#exp").onclick=()=>location.href="/api/export";
+
+q("#exp").onclick=()=>{
+    const m = V.getModel();
+    if(!m) return;
+    const blob = new Blob([m.getPDB()], {type: "text/plain"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = q("#title").textContent + ".pdb";
+    a.click();
+};
+
 q("#spin").onclick=e=>{st.spin=!st.spin;V.spin(st.spin);e.currentTarget.classList.toggle("on",st.spin)};
 q("#reset").onclick=()=>{V.zoomTo();V.render()};
 q("#shot").onclick=()=>{const a=document.createElement("a");a.href=V.pngURI();a.download="protein.png";a.click()};
-addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key==="z"){e.preventDefault();edit({op:"undo"})}if((e.ctrlKey||e.metaKey)&&e.key==="y"){e.preventDefault();edit({op:"redo"})}});
 addEventListener("resize",()=>{V.resize();drawRama()});
-q("#undo").disabled=q("#redo").disabled=true;
 load({pdb_id:"1CRN"});
 </script></body></html>
